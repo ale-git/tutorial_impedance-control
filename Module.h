@@ -10,8 +10,12 @@
 #include <yarp/dev/IPositionControl.h>
 #include <yarp/dev/ITorqueControl.h>
 #include <yarp/dev/PolyDriver.h>
+#include <yarp/dev/ICurrentControl.h>
 
 #include <iDynTree/KinDynComputations.h>
+
+#include <iostream>
+#include <fstream>
 
 class Module : public yarp::os::RFModule
 {
@@ -25,7 +29,8 @@ class Module : public yarp::os::RFModule
     yarp::dev::IControlLimits    *ilim{nullptr};
     yarp::dev::IEncoders         *ienc{nullptr};
     yarp::dev::IControlMode      *imod{nullptr};
-    yarp::dev::ITorqueControl    *itrq{nullptr};
+    //yarp::dev::ITorqueControl    *itrq{nullptr};
+    yarp::dev::ICurrentControl   *icur{nullptr};
 
     // Quantities used by the control
     yarp::sig::Vector positionsInRad;
@@ -33,16 +38,9 @@ class Module : public yarp::os::RFModule
     yarp::sig::Vector positionsInDeg;
     yarp::sig::Vector velocitiesInDegS;
     yarp::sig::Vector gravityCompensation;
-    yarp::sig::Vector referencePositionsInRad;
-
-    //write
-    yarp::sig::Vector errorInRad;
-    yarp::sig::Vector kp; // Nm/rad
-    yarp::sig::Vector kd; // Nm/rad
-    yarp::sig::Vector torquesInNm;
-    yarp::sig::Vector zeroDofs;
-    yarp::sig::Vector baseZeroDofs;
-    yarp::sig::Vector grav;
+    yarp::sig::Vector currentsInAmp;
+    
+    std::ofstream outdata;
 
 public:
     virtual double getPeriod ();

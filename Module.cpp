@@ -60,6 +60,8 @@ bool Module::updateModule ()
     ienc->getEncoderSpeeds(velocitiesInDegS.data());
     convertDegToRad(velocitiesInDegS, velocitiesInRadS);
 
+    icur->getCurrents(currentsInAmp.data());
+
     // Compute the bias term of the inverse dynamics, passing data to iDynTree
     // Note: for the sake of simplicity we are allocate dynamically this iDynTree
     // quantities here, that in general is not real time safe.
@@ -86,14 +88,19 @@ bool Module::updateModule ()
 
     // We extract the joint part to a YARP vector
     iDynTree::toYarp(g_q.jointTorques(), gravityCompensation);
+    
+    const int LKNEE = 14; 
+    
+    outdata << currentsInAmp(LKNEE) << ',' << positionsInRad(LKNEE) << ',' << velocitiesInRadS(LKNEE) << ',' << gravityCompensation(LKNEE) << '\n';
+    
 
-    //compute control
-    for (size_t i = 0; i < positionsInRad.size(); i++) {
-        errorInRad(i) = referencePositionsInRad(i) - positionsInRad(i);
-        torquesInNm(i) = gravityCompensation(i) + kp(i) * errorInRad(i) - kd(i) * velocitiesInRadS(i);
-    }
+    ////compute control
+    //for (size_t i = 0; i < positionsInRad.size(); i++) {
+        //errorInRad(i) = referencePositionsInRad(i) - positionsInRad(i);
+        //torquesInNm(i) = gravityCompensation(i) + kp(i) * errorInRad(i) - kd(i) * velocitiesInRadS(i);
+    //}
 
-    itrq->setRefTorques(torquesInNm.data());
+    //itrq->setRefTorques(torquesInNm.data());
 
     return true;
 }
@@ -169,7 +176,8 @@ bool Module::configure (yarp::os::ResourceFinder &rf)
 
     // Actually open the device
     bool ok = robotDevice.open(options);
-    if (!ok) {
+    if (!ok) 
+    {
         std::cout << "Could not open remotecontrolboardremapper object.\n";
         return false;
     }
@@ -178,9 +186,11 @@ bool Module::configure (yarp::os::ResourceFinder &rf)
     ok=ok && robotDevice.view(ilim);
     ok=ok && robotDevice.view(ienc);
     ok=ok && robotDevice.view(imod);
-    ok=ok && robotDevice.view(itrq);
+    //ok=ok && robotDevice.view(itrq);
+    ok=ok && robotDevice.view(icur);
 
-    if (!ok) {
+    if (!ok) 
+    {
         yError()<<"Unable to open interfaces";
         return false;
     }
@@ -208,7 +218,8 @@ bool Module::configure (yarp::os::ResourceFinder &rf)
     // compute dynamics quantities such as the vector of gravity torques
     ok = ok && kinDynModel.loadRobotModel(mdlLoader.model());
 
-    if (!ok) {
+    if (!ok) 
+    {
         yError()<<"Unable to open model " << modelFullPath;
         return false;
     }
@@ -226,80 +237,45 @@ bool Module::configure (yarp::os::ResourceFinder &rf)
     velocitiesInDegS.resize(actuatedDOFs, 0.0);
     velocitiesInRadS.resize(actuatedDOFs, 0.0);
     gravityCompensation.resize(actuatedDOFs, 0.0);
-    referencePositionsInRad.resize(actuatedDOFs, 0.0);
+    currentsInAmp.resize(actuatedDOFs, 0.0);
 
     // Make sure that we are reading data from the robot before proceeding
     bool readEncoderSuccess = false;
-    for (int i=0; i < 10 && !readEncoderSuccess; i++) {
+    for (int i=0; i < 10 && !readEncoderSuccess; i++) 
+    {
         readEncoderSuccess = ienc->getEncoders(positionsInDeg.data());
-        if (!readEncoderSuccess) {
+        if (!readEncoderSuccess)
+        {
             yarp::os::Time::delay(0.1);
         }
     }
 
-    if (!readEncoderSuccess) {
+    if (!readEncoderSuccess) 
+    {
         yError()<<"Unable to read encoders, exiting.";
         return false;
     }
 
-    convertDegToRad(positionsInDeg, referencePositionsInRad);
-
-    iDynTree::IJointConstPtr joint = model.getJoint(model.getJointIndex("l_shoulder_pitch"));
-    if (!joint) {
-        std::cout << "Could not retrieve index of l_shoulder_pitch.\n";
-        return false;
-    }
-    referencePositionsInRad(joint->getDOFsOffset()) += 1.5;
-
-    joint = model.getJoint(model.getJointIndex("l_elbow"));
-    if (!joint) {
-        std::cout << "Could not retrieve index of l_elbow.\n";
-        return false;
-    }
-    referencePositionsInRad(joint->getDOFsOffset()) += 1.5;
-
-    joint = model.getJoint(model.getJointIndex("r_shoulder_pitch"));
-    if (!joint) {
-        std::cout << "Could not retrieve index of r_shoulder_pitch.\n";
-        return false;
-    }
-    referencePositionsInRad(joint->getDOFsOffset()) += 1.5;
-
-    joint = model.getJoint(model.getJointIndex("r_elbow"));
-    if (!joint) {
-        std::cout << "Could not retrieve index of r_elbow.\n";
-        return false;
-    }
-    referencePositionsInRad(joint->getDOFsOffset()) += 1.5;
-
     //write
-    errorInRad.resize(actuatedDOFs, 0.0);
+    //torquesInNm.resize(actuatedDOFs, 0.0);
+    
+    outdata.open("data.csv");
 
-    kp.resize(actuatedDOFs, 1.5);
-    kd.resize(actuatedDOFs, 0.5);
-
-    torquesInNm.resize(actuatedDOFs, 0.0);
-
-    zeroDofs.resize(actuatedDOFs, 0.0);
-    baseZeroDofs.resize(6, 0.0);
-
-    grav.resize(3, 0.0);
-    grav(2) = -9.81;
-
-    // Setting the control mode of all the controlled joints to torque control mode
-    // See http://wiki.icub.org/wiki/Control_Modes for more info about the control modes
-    std::vector<int> ctrlModes(actuatedDOFs, VOCAB_CM_TORQUE);
-    imod->setControlModes(ctrlModes.data());
+    //// Setting the control mode of all the controlled joints to torque control mode
+    //// See http://wiki.icub.org/wiki/Control_Modes for more info about the control modes
+    //std::vector<int> ctrlModes(actuatedDOFs, VOCAB_CM_TORQUE);
+    //imod->setControlModes(ctrlModes.data());
 
     return true;
 }
 
 bool Module::close ()
 {
-    std::vector<int> ctrlModes(positionsInDeg.size(), VOCAB_CM_POSITION);
-    imod->setControlModes(ctrlModes.data());
+    //std::vector<int> ctrlModes(positionsInDeg.size(), VOCAB_CM_POSITION);
+    //imod->setControlModes(ctrlModes.data());
 
     //cleanup stuff
+    outdata.close();
     robotDevice.close();
     return true;
 }
